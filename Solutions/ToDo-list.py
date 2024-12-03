@@ -1,7 +1,4 @@
 """
-GENERAL:
-- Crear funcion distancia haversiana
-- Crear función distancia con ORSS
 
 ESCENARIO 1) Solo que sea una solución factible (rangos, capacidades, y que cumpla demandas)
     - No sé si para multi_vehicles toca generarlos, o solo decir que lo creamos y ya
