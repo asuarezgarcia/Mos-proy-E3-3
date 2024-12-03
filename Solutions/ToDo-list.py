@@ -3,11 +3,6 @@
 ESCENARIO 1) Solo que sea una solución factible (rangos, capacidades, y que cumpla demandas)
     - No sé si para multi_vehicles toca generarlos, o solo decir que lo creamos y ya
     - MODELO
-        - Cargar datos entrada y guardarlos en alguna estructura
-            - Cargar clientes
-            - Cargar depósitos
-            - Cargar vehículos
-        - Crear función matrices de costos usando distancias (son 2, una harversiana y otra con ORSS)
         - Crear variables de decisión
         - Crear modelo
         - Poner restricciones

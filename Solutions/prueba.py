@@ -61,7 +61,8 @@ def distancia_osrm(coord1, coord2):
         data = response.json()
         if data['code'] == 'Ok':
             distancia = data['routes'][0]['legs'][0]['distance']
-            return distancia
+            duracion = data['routes'][0]['legs'][0]['duration']
+            return distancia, duracion
         else:
             print("Error in response:", data)
             return None
@@ -107,9 +108,9 @@ def get_coordenadas(nodos, clients, depots, len_clients):
 
     return cordenadas
 
-def get_matriz_distancias(nodos, cordenadas, len_clients):
+def get_matriz_costos(nodos, cordenadas, len_clients):
     """Generar un diccionario de diccionarios anidado de distancias entre nodos."""
-    distancias = {}
+    costos = {}
 
     for i, nodo_i in enumerate(nodos):
         for j, nodo_j in enumerate(nodos):
@@ -119,19 +120,23 @@ def get_matriz_distancias(nodos, cordenadas, len_clients):
                         coord1 = cordenadas[nodo_i]
                         coord2 = cordenadas[nodo_j]
                         if tipoo == 1:
-                            #print( nodo_i, nodo_j, tipoo)
-                            distancias[(nodo_i, nodo_j, tipoo)] = round(distancia_haversiana(coord1, coord2), 4) # Si es un dron, haversiana
+                            dist = round(distancia_haversiana(coord1, coord2), 4)
+                            costo1 = dist * (1/2) #  (dist / 1000) * 500 = dist * (500/1000)
+                            tiempo = dist / 40 # distancia / velocidad = tiempo
+                            costo2 = 500 * tiempo
+                            costos[(nodo_i, nodo_j, tipoo)] = costo1 + costo2
                         else:
-                            #print( nodo_i, nodo_j, tipoo)
-                            dist = distancia_osrm(coord1, coord2)
-                            #print(f"Distancia OSRM: {dist}")
-                            distancias[(nodo_i, nodo_j, tipoo)] = round(dist, 4) # Si es un carro, osrm
+                            dist, duracion = distancia_osrm(coord1, coord2)
+                            costo1 = round(dist,4) * 5 #  (dist / 1000) * 5000 = dist * (5000/1000)
+                            costo2 = duracion * 500
+                            c_total = costo1 + costo2
+                            costos[(nodo_i, nodo_j, tipoo)] = c_total
                     else:
-                        distancias[(nodo_i, nodo_j, tipoo)] = None # Acá es cuando es de un depósito a un depósito
+                        costos[(nodo_i, nodo_j, tipoo)] = None # Acá es cuando es de un depósito a un depósito
                 else:
-                    distancias[(nodo_i, nodo_j, tipoo)] = 0
+                    costos[(nodo_i, nodo_j, tipoo)] = 0
 
-    return distancias
+    return costos
 
 # ----------------------------------------------------------------------
 # Funciones para parámetros Vehículos
@@ -153,19 +158,12 @@ def get_capacidad(vehiculos, vehicle):
 # ----------------------------------------------------------------------
 # Calcular parámetros
 # ----------------------------------------------------------------------
-demanda = get_demanda(nodos, clients)
 idCliente = get_id_cliente(nodos, clients)
 idDeposito = get_id_deposito(nodos, depots, len(clients))
 cordenadas = get_coordenadas(nodos, clients, depots, len(clients))
 tipo = get_tipo(vehiculos, vehicle)
 capacidad = get_capacidad(vehiculos, vehicle)
-distancias = get_matriz_distancias(nodos, cordenadas, len(clients))
-
-# ----------------------------------------------------------------------
-# Función y cálculo de distancias
-# ----------------------------------------------------------------------
-
-
+#costos = get_matriz_costos(nodos, cordenadas, len(clients))
 
 
 
@@ -173,13 +171,15 @@ distancias = get_matriz_distancias(nodos, cordenadas, len(clients))
 print(vehiculos)
 print(tipo)
 print(nodos)
-print(demanda)
 print("\n")
 print(cordenadas)
 print("\n")
+print(capacidad)
+print("\n")
+print(idCliente)
 
 
-print(distancias)
+#print(costos)
 
 
 

@@ -45,13 +45,29 @@ def distancia_haversiana(coord1, coord2):
 
 def distancia_osrm(coord1, coord2):
     """Calcular la distancia entre dos coordenadas usando OSRM."""
-    url = f"http://router.project-osrm.org/route/v1/driving/{coord1[1]},{coord1[0]};{coord2[1]},{coord2[0]}?alternatives=false&overview=false".format(coord1[1], coord1[0], coord2[1], coord2[0])
+    #print(f"Coord1 (lon, lat): {coord1}")
+    #print(f"Coord2 (lon, lat): {coord2}")
+    
+    start = "{},{}".format(coord1[0], coord1[1])
+    end = "{},{}".format(coord2[0], coord2[1])
+    
+    url = 'http://router.project-osrm.org/route/v1/driving/{};{}?alternatives=false&annotations=nodes'.format(start, end)
     response = requests.get(url)
-    if response.status_code == 200:
-        root = ET.fromstring(response.text)
-        distancia = float(root[0][0].attrib['distance'])
-        return distancia
-    else:
+    
+    # Print the response content for debugging
+    #print("Response Content:", response.text)
+    
+    try:
+        data = response.json()
+        if data['code'] == 'Ok':
+            distancia = data['routes'][0]['legs'][0]['distance']
+            duracion = data['routes'][0]['legs'][0]['duration']
+            return distancia, duracion
+        else:
+            print("Error in response:", data)
+            return None
+    except ValueError as e:
+        print("JSON Parse Error:", e)
         return None
 
 # ----------------------------------------------------------------------
@@ -88,27 +104,42 @@ def get_coordenadas(nodos, clients, depots, len_clients):
     
     # Agregar coordenadas de depósitos con valores predeterminados
     for i, nodo in enumerate(nodos[len_clients:], start=0):
-        cordenadas[nodo] = (float(depots.iloc[i, 1]), float(depots.iloc[i, 2]))
+        cordenadas[nodo] = (float(depots.iloc[i, 2]), float(depots.iloc[i, 3]))
 
     return cordenadas
 
-def get_matriz_distancias(nodos, cordenadas, len_clients):
-    """Generar un diccionario anidado de distancias entre nodos."""
-    distancias = {nodo_i: {} for nodo_i in nodos}
-    
+def get_matriz_dist_costos(nodos, cordenadas, len_clients):
+    """Generar un diccionario de diccionarios anidado de distancias entre nodos."""
+    costos = {}
+    distancias = {}
+
     for i, nodo_i in enumerate(nodos):
         for j, nodo_j in enumerate(nodos):
-            if i != j:
-                if not (i >= len_clients and j >= len_clients):
-                    coord1 = cordenadas[nodo_i]
-                    coord2 = cordenadas[nodo_j]
-                    distancias[nodo_i][nodo_j] = round(distancia_haversiana(coord1, coord2), 4)
+            for tipoo in range(2):
+                if i != j:
+                    if not (i >= len_clients and j >= len_clients):
+                        coord1 = cordenadas[nodo_i]
+                        coord2 = cordenadas[nodo_j]
+                        if tipoo == 1:
+                            dist = round(distancia_haversiana(coord1, coord2), 4)
+                            costo1 = dist * (1/2) #  (dist / 1000) * 500 = dist * (500/1000)
+                            tiempo = dist / 40 # distancia / velocidad = tiempo
+                            costo2 = 500 * tiempo
+                            costos[(nodo_i, nodo_j, tipoo)] = costo1 + costo2
+                            distancias[(nodo_i, nodo_j, tipoo)] = dist
+                        else:
+                            dist, duracion = distancia_osrm(coord1, coord2)
+                            costo1 = round(dist,4) * 5 #  (dist / 1000) * 5000 = dist * (5000/1000)
+                            costo2 = duracion * 500
+                            c_total = costo1 + costo2
+                            costos[(nodo_i, nodo_j, tipoo)] = c_total
+                            distancias[(nodo_i, nodo_j, tipoo)] = round(dist,4)
+                    else:
+                        costos[(nodo_i, nodo_j, tipoo)] = None # Acá es cuando es de un depósito a un depósito
                 else:
-                    distancias[nodo_i][nodo_j] = None # Acá es cuando es de un depósito a un depósito
-            else:
-                distancias[nodo_i][nodo_j] = 0
-    
-    return distancias
+                    costos[(nodo_i, nodo_j, tipoo)] = 0
+
+    return distancias, costos
 
 # ----------------------------------------------------------------------
 # Funciones para parámetros Vehículos
@@ -134,17 +165,9 @@ demanda = get_demanda(nodos, clients)
 idCliente = get_id_cliente(nodos, clients)
 idDeposito = get_id_deposito(nodos, depots, len(clients))
 cordenadas = get_coordenadas(nodos, clients, depots, len(clients))
-distancias = get_matriz_distancias(nodos, cordenadas, len(clients))
 tipo = get_tipo(vehiculos, vehicle)
 capacidad = get_capacidad(vehiculos, vehicle)
-"""
-diccionario_costos = {
-    for i in nodos:
-        for j in nodos:
-            for k in vehiculos:
-                if i != j:
-                    
-}"""
+distancias, costos = get_matriz_dist_costos(nodos, cordenadas, len(clients))
 
 # ----------------------------------------------------------------------
 # MODELO
@@ -158,32 +181,25 @@ model.x = Var(nodos, nodos, vehiculos, within=Binary)
 
 # Función objetivo
 def objetivo(model):
-    return sum(model.x[i, j, k] * matriz_costos[i][j] for i in nodos for j in nodos for k in vehiculos)
+    return sum(model.x[i, j, v] * costos[(i, j, tipo[v])] for i in nodos for j in nodos for v in vehiculos)
 Model.obj = Objective(rule=objetivo, sense=minimize)
 
 ### Restricciones
-# Restricción de "or": una localización debe tener un sensor o una localización adyacente debe tenerlo
-def restriccion_or(model, loc):
-    if sens_locs[loc][sensor] == 1:
-        return model.x[loc] + sum(model.x[adyacente] for adyacente in adyas[loc]) >= 1
-    else:
-        return Constraint.Skip
-model.restriccion_or = Constraint(localizaciones, rule=restriccion_or)
 
-# Esta restricción asegura que la demanda asignada a un vehículo no supere su capacidad.
+# Asegura que la demanda asignada a un vehículo no supere su capacidad.
 def restriccion_capacidad_vehiculo(model, k):
     return sum(model.x[i, j, k] * demanda[j] for i in nodos for j in nodos) <= capacidad[vehiculos[k]][1]
 model.restriccion_capacidad_vehiculo = Constraint(vehiculos, rule=restriccion_capacidad_vehiculo)
 
-# Esta restricción garantiza que la distancia recorrida por un vehículo no supere su capacidad de distancia diaria.
+# Garantiza que la distancia recorrida por un vehículo no supere su rango.
 def restriccion_distancia_maxima(model, k):
     return sum(model.x[i, j, k] * distancias[i][j] for i in nodos for j in nodos) <= capacidad[vehiculos[k]][0]  # Capacidad máxima de distancia
 model.restriccion_distancia_maxima = Constraint(vehiculos, rule=restriccion_distancia_maxima)
 
-# Esta restricción asegura que cada vehículo salga de un depósito para iniciar su ruta.
-def restriccion_salida_nodo_sucursal(model, k):
+# Asegura que cada vehículo salga de un depósito para iniciar su ruta.
+def restriccion_salida_nodo_deposito(model, k):
     return sum(model.x[deposito, j, k] for deposito in idDeposito for j in nodos if deposito != j) == 1
-model.restriccion_salida_nodo_sucursal = Constraint(vehiculos, rule=restriccion_salida_nodo_sucursal)
+model.restriccion_salida_nodo_sucursal = Constraint(vehiculos, rule=restriccion_salida_nodo_deposito)
 
 # Para evitar duplicaciones, no puede haber más de un vehículo viajando entre los mismos nodos.
 def restriccion_ruta_unica(model, i, j):
