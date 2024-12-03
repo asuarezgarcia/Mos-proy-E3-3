@@ -15,9 +15,9 @@ import plotly.express as px
 # Cargar csv's
 # ----------------------------------------------------------------------
 path = 'Data/case_1_base/'
-clients = pd.read_csv(path + 'Clients.csv')
-depots = pd.read_csv(path + 'Depots.csv')
-vehicle = pd.read_csv(path + 'multi_vehicles.csv')
+clients = pd.read_csv(path + 'ClientsMini.csv')
+depots = pd.read_csv(path + 'DepotsMini.csv')
+vehicle = pd.read_csv(path + 'VehiclesMini.csv')
 
 # ----------------------------------------------------------------------
 # Variables
@@ -179,6 +179,10 @@ model = ConcreteModel()
 # Variables de decisión
 model.x = Var(nodos, nodos, vehiculos, within=Binary)
 
+# Definir la variable u para eliminación de subrutas
+model.u = Var(nodos, vehiculos, domain=NonNegativeIntegers, bounds=(1, len(nodos) - 1))
+
+
 # Función objetivo
 def objetivo(model):
     return sum(model.x[i, j, v] * costos[(i, j, tipo[v])] for i in nodos for j in nodos for v in vehiculos)
@@ -186,28 +190,28 @@ Model.obj = Objective(rule=objetivo, sense=minimize)
 
 ### Restricciones
 
-# Asegura que la demanda asignada a un vehículo no supere su capacidad.
 def restriccion_capacidad_vehiculo(model, k):
-    return sum(model.x[i, j, k] * demanda[j] for i in nodos for j in nodos) <= capacidad[vehiculos[k]][1]
-model.restriccion_capacidad_vehiculo = Constraint(vehiculos, rule=restriccion_capacidad_vehiculo)
+    # Ajuste para asegurar que estamos utilizando las claves correctamente
+    return sum(model.x[i, j, k] * demanda[j] for i in nodos for j in nodos) <= capacidad[vehiculos[k]][0]
 
-# Garantiza que la distancia recorrida por un vehículo no supere su rango.
+
+
 def restriccion_distancia_maxima(model, k):
-    return sum(model.x[i, j, k] * distancias[i][j] for i in nodos for j in nodos) <= capacidad[vehiculos[k]][0]  # Capacidad máxima de distancia
-model.restriccion_distancia_maxima = Constraint(vehiculos, rule=restriccion_distancia_maxima)
+    # Itera sobre los nodos por sus nombres
+    return sum(model.x[i, j, k] * costos[(i, j, 0)] for i in nodos for j in nodos) <= capacidad[vehiculos[k]][0]
 
-# Asegura que cada vehículo salga de un depósito para iniciar su ruta.
+
+# Restricción de Salida del Depósito
 def restriccion_salida_nodo_deposito(model, k):
     return sum(model.x[deposito, j, k] for deposito in idDeposito for j in nodos if deposito != j) == 1
-model.restriccion_salida_nodo_sucursal = Constraint(vehiculos, rule=restriccion_salida_nodo_deposito)
+model.restriccion_salida_nodo_deposito = Constraint(vehiculos, rule=restriccion_salida_nodo_deposito)
 
-# Para evitar duplicaciones, no puede haber más de un vehículo viajando entre los mismos nodos.
+# Restricción de Ruta Única
 def restriccion_ruta_unica(model, i, j):
     return sum(model.x[i, j, k] for k in vehiculos) <= 1
 model.restriccion_ruta_unica = Constraint(nodos, nodos, rule=restriccion_ruta_unica)
 
-# Tal vez es necesario generar unas variables auxiliares para evitar subrutas
-#model.u = Var(nodos, vehiculos, within=NonNegativeReals) # estas serian en teoria 
+# Restricción de eliminación de subrutas
 def restriccion_eliminacion_subrutas(model, i, j, k):
     if i != j and i != 0 and j != 0:  # No se aplica al depósito
         return model.u[i, k] - model.u[j, k] + len(nodos) * model.x[i, j, k] <= len(nodos) - 1
@@ -216,14 +220,35 @@ def restriccion_eliminacion_subrutas(model, i, j, k):
 model.restriccion_eliminacion_subrutas = Constraint(nodos, nodos, vehiculos, rule=restriccion_eliminacion_subrutas)
 
 
-
 # Resolver el modelo
 solver = SolverFactory('glpk')
-solver.solve(model)
+# Resolver el modelo
+solver_status = solver.solve(model)
 
-# Mostrar la solución para el sensor actual
-solucion_sensor = [loc for loc in localizaciones if model.x[loc].value == 1]
-print(f"Solución para el sensor {sensor}: {solucion_sensor}")
+# Verificar si el modelo se resolvió correctamente
+if solver_status.solver.termination_condition == TerminationCondition.optimal:
+    print("La solución óptima fue encontrada.")
+else:
+    print("No se encontró una solución óptima.")
+
+# Mostrar las rutas seleccionadas
+print("\nRutas seleccionadas por el modelo:")
+for k in vehiculos:
+    print(f"\nVehículo {k}:")
+    for i in nodos:
+        for j in nodos:
+            if model.x[i, j, k].value > 0.5:  # Considera que es 1 si el valor es mayor que 0.5 (siendo binaria)
+                print(f"  - De {i} a {j}")
+
+# Mostrar las posiciones de los nodos en el recorrido
+print("\nPosiciones de los nodos en el recorrido:")
+for k in vehiculos:
+    print(f"\nVehículo {k}:")
+    for i in nodos:
+        print(f"  Nodo {i}: Posición {model.u[i, k].value}")
+
+# Mostrar el valor de la función objetivo (costo total)
+print(f"\nCosto total del recorrido: {model.obj().expr().value}")
 
 
 

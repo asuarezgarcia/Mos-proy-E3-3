@@ -15,9 +15,9 @@ import plotly.express as px
 # Cargar csv's
 # ----------------------------------------------------------------------
 path = 'Data/case_1_base/'
-clients = pd.read_csv(path + 'Clients.csv')
-depots = pd.read_csv(path + 'Depots.csv')
-vehicle = pd.read_csv(path + 'multi_vehicles.csv')
+clients = pd.read_csv(path + 'ClientsMini.csv')
+depots = pd.read_csv(path + 'DepotsMini.csv')
+vehicle = pd.read_csv(path + 'VehiclesMini.csv')
 
 # ----------------------------------------------------------------------
 # Variables
@@ -163,7 +163,7 @@ idDeposito = get_id_deposito(nodos, depots, len(clients))
 cordenadas = get_coordenadas(nodos, clients, depots, len(clients))
 tipo = get_tipo(vehiculos, vehicle)
 capacidad = get_capacidad(vehiculos, vehicle)
-#costos = get_matriz_costos(nodos, cordenadas, len(clients))
+costos = get_matriz_costos(nodos, cordenadas, len(clients))
 
 
 
@@ -179,7 +179,7 @@ print("\n")
 print(idCliente)
 
 
-#print(costos)
+print(costos)
 
 
 
