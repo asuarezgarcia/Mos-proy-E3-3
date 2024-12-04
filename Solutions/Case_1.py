@@ -14,7 +14,7 @@ import plotly.express as px
 # ----------------------------------------------------------------------
 # Cargar csv's
 # ----------------------------------------------------------------------
-path = 'Data/case_1_base/'
+path = 'Data/case_1_base/' 
 clients = pd.read_csv(path + 'ClientsMini.csv')
 depots = pd.read_csv(path + 'DepotsMini.csv')
 vehicle = pd.read_csv(path + 'VehiclesMini.csv')
