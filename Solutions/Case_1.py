@@ -168,6 +168,8 @@ cordenadas = get_coordenadas(nodos, clients, depots, len(clients))
 tipo = get_tipo(vehiculos, vehicle)
 capacidad = get_capacidad(vehiculos, vehicle)
 distancias, costos = get_matriz_dist_costos(nodos, cordenadas, len(clients))
+print(distancias)
+print(costos)
 
 # ----------------------------------------------------------------------
 # MODELO
@@ -185,7 +187,7 @@ model.u = Var(nodos, vehiculos, domain=NonNegativeIntegers, bounds=(1, len(nodos
 
 # Función objetivo
 def objetivo(model):
-    return sum(model.x[i, j, v] * costos[(i, j, tipo[v])] for i in nodos for j in nodos for v in vehiculos)
+    return sum(100+model.x[i, j, v] * costos[(i, j, tipo[v])] for i in nodos for j in nodos for v in vehiculos)
 Model.obj = Objective(rule=objetivo, sense=minimize)
 
 ### Restricciones
@@ -248,7 +250,7 @@ for k in vehiculos:
         print(f"  Nodo {i}: Posición {model.u[i, k].value}")
 
 # Mostrar el valor de la función objetivo (costo total)
-print(f"\nCosto total del recorrido: {model.obj().expr().value}")
+print(f"\nCosto total del recorrido: {model.display()}")
 
 
 

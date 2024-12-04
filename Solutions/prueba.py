@@ -167,7 +167,7 @@ costos = get_matriz_costos(nodos, cordenadas, len(clients))
 
 
 
-
+print(distancia_haversiana())
 print(vehiculos)
 print(tipo)
 print(nodos)
