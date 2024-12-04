@@ -22,7 +22,7 @@ vehicle = pd.read_csv(path + 'VehiclesMini.csv')
 # ----------------------------------------------------------------------
 # Variables
 # ----------------------------------------------------------------------
-nodos = [f"nodo{n+1}" for n in range(len(clients) + len(depots))]
+nodos = [f"nodo{n+1}" for n in range(len(depots) + len(clients))]
 vehiculos = [f"V{n+1}" for n in range(len(vehicle))]
 
 # ----------------------------------------------------------------------
@@ -129,15 +129,17 @@ def get_matriz_dist_costos(nodos, cordenadas, len_clients):
                             distancias[(nodo_i, nodo_j, tipoo)] = dist
                         else:
                             dist, duracion = distancia_osrm(coord1, coord2)
-                            costo1 = round(dist,4) * 5 #  (dist / 1000) * 5000 = dist * (5000/1000)
-                            costo2 = duracion * 500
+                            costo1 = round(dist, 4) * 5 #  (dist / 1000) * 5000 = dist * (5000/1000)
+                            costo2 = duracion * 500 * (1/60)
                             c_total = costo1 + costo2
                             costos[(nodo_i, nodo_j, tipoo)] = c_total
                             distancias[(nodo_i, nodo_j, tipoo)] = round(dist,4)
                     else:
-                        costos[(nodo_i, nodo_j, tipoo)] = None # Acá es cuando es de un depósito a un depósito
+                        costos[(nodo_i, nodo_j, tipoo)] = 9999999999999 # Acá es cuando es de un depósito a un depósito
+                        distancias[(nodo_i,nodo_j, tipoo)] = 99999999999999
                 else:
                     costos[(nodo_i, nodo_j, tipoo)] = 0
+                    distancias[(nodo_i, nodo_j, tipoo)] = 0
 
     return distancias, costos
 
@@ -168,8 +170,6 @@ cordenadas = get_coordenadas(nodos, clients, depots, len(clients))
 tipo = get_tipo(vehiculos, vehicle)
 capacidad = get_capacidad(vehiculos, vehicle)
 distancias, costos = get_matriz_dist_costos(nodos, cordenadas, len(clients))
-print(distancias)
-print(costos)
 
 # ----------------------------------------------------------------------
 # MODELO
@@ -187,15 +187,13 @@ model.u = Var(nodos, vehiculos, domain=NonNegativeIntegers, bounds=(1, len(nodos
 
 # Función objetivo
 def objetivo(model):
-    return sum(100+model.x[i, j, v] * costos[(i, j, tipo[v])] for i in nodos for j in nodos for v in vehiculos)
-Model.obj = Objective(rule=objetivo, sense=minimize)
+    return sum(model.x[i, j, v] * costos[(i, j, tipo[v])] for i in nodos for j in nodos for v in vehiculos)
+model.obj = Objective(rule=objetivo, sense=minimize)
 
 ### Restricciones
-
 def restriccion_capacidad_vehiculo(model, k):
     # Ajuste para asegurar que estamos utilizando las claves correctamente
     return sum(model.x[i, j, k] * demanda[j] for i in nodos for j in nodos) <= capacidad[vehiculos[k]][0]
-
 
 
 def restriccion_distancia_maxima(model, k):
@@ -208,10 +206,12 @@ def restriccion_salida_nodo_deposito(model, k):
     return sum(model.x[deposito, j, k] for deposito in idDeposito for j in nodos if deposito != j) == 1
 model.restriccion_salida_nodo_deposito = Constraint(vehiculos, rule=restriccion_salida_nodo_deposito)
 
+
 # Restricción de Ruta Única
 def restriccion_ruta_unica(model, i, j):
     return sum(model.x[i, j, k] for k in vehiculos) <= 1
 model.restriccion_ruta_unica = Constraint(nodos, nodos, rule=restriccion_ruta_unica)
+
 
 # Restricción de eliminación de subrutas
 def restriccion_eliminacion_subrutas(model, i, j, k):
@@ -221,11 +221,16 @@ def restriccion_eliminacion_subrutas(model, i, j, k):
         return Constraint.Skip
 model.restriccion_eliminacion_subrutas = Constraint(nodos, nodos, vehiculos, rule=restriccion_eliminacion_subrutas)
 
+"""
+def restriccion_flujo_demanda(model, j):
+    return sum(model.x[i, j, k] * demanda[j] for i in nodos for k in vehiculos) == demanda[j]
+model.restriccion_flujo_demanda = Constraint(nodos, rule=restriccion_flujo_demanda)
+"""
 
 # Resolver el modelo
 solver = SolverFactory('glpk')
 # Resolver el modelo
-solver_status = solver.solve(model)
+solver_status = solver.solve(model, tee=True)
 
 # Verificar si el modelo se resolvió correctamente
 if solver_status.solver.termination_condition == TerminationCondition.optimal:
@@ -243,14 +248,16 @@ for k in vehiculos:
                 print(f"  - De {i} a {j}")
 
 # Mostrar las posiciones de los nodos en el recorrido
+"""
 print("\nPosiciones de los nodos en el recorrido:")
 for k in vehiculos:
     print(f"\nVehículo {k}:")
     for i in nodos:
         print(f"  Nodo {i}: Posición {model.u[i, k].value}")
+        """
 
 # Mostrar el valor de la función objetivo (costo total)
-print(f"\nCosto total del recorrido: {model.display()}")
+model.display()
 
 
 
